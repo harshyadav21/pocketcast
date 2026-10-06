@@ -65,6 +65,11 @@ python3 scripts/e2e_test.py         # 17 end-to-end checks, should print ALL PAS
 | Playback API | http://localhost:8081/v1/trending |
 | Prometheus | http://localhost:9090 |
 | Postgres (from host) | `localhost:5433`, user/password/db `pocketcast` |
+| Kafka UI (Redpanda Console) | http://localhost:8088 |
+| Redis UI (RedisInsight) | http://localhost:5540 |
+| DB UI (Adminer) | http://localhost:8089 (server `postgres`, user/password `pocketcast`) |
+
+For a step-by-step look around, see [notes/TOUR.md](notes/TOUR.md).
 
 Stop with `docker compose down`. Add `-v` to also delete the database volume.
 

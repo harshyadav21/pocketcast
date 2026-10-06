@@ -110,3 +110,6 @@ LOGGING = {
     "handlers": {"console": {"class": "logging.StreamHandler"}},
     "root": {"handlers": ["console"], "level": "INFO"},
 }
+
+# Where the browsable-API login sends you when no ?next= is given.
+LOGIN_REDIRECT_URL = "/api/v1/shows"
