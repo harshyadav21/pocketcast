@@ -1,0 +1,86 @@
+x-catalog-env: &catalog-env
+  POSTGRES_HOST: postgres
+  POSTGRES_DB: pocketcast
+  POSTGRES_USER: pocketcast
+  POSTGRES_PASSWORD: pocketcast
+  INTERNAL_API_TOKEN: dev-internal-token
+  KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: pocketcast
+      POSTGRES_USER: pocketcast
+      POSTGRES_PASSWORD: pocketcast
+    # 5433 on the host so it doesn't clash with a locally installed Postgres.
+    ports: ["5433:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pocketcast"]
+      interval: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+
+  # Kafka-compatible broker in a single small container.
+  redpanda:
+    image: redpandadata/redpanda:v24.2.7
+    command:
+      - redpanda start --mode dev-container --smp 1
+      - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr internal://redpanda:9092,external://localhost:19092
+    ports: ["19092:19092"]
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy:.*true'"]
+      interval: 3s
+      retries: 30
+
+  catalog:
+    build: ./catalog-service
+    command: sh -c "python manage.py migrate --noinput && python manage.py seed_demo && gunicorn pocketcast.wsgi:application --bind 0.0.0.0:8000 --workers 3"
+    environment: *catalog-env
+    ports: ["8000:8000"]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  catalog-consumer:
+    build: ./catalog-service
+    command: python manage.py consume_playback_events
+    environment: *catalog-env
+    restart: on-failure
+    depends_on:
+      catalog: { condition: service_started }
+      redpanda: { condition: service_healthy }
+
+  playback:
+    build: ./playback-service
+    environment:
+      REDIS_ADDR: redis:6379
+      KAFKA_BROKERS: redpanda:9092
+      CATALOG_URL: http://catalog:8000
+      INTERNAL_API_TOKEN: dev-internal-token
+    ports: ["8081:8081"]
+    depends_on:
+      redis: { condition: service_started }
+      redpanda: { condition: service_healthy }
+      catalog: { condition: service_started }
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    configs:
+      - source: prometheus
+        target: /etc/prometheus/prometheus.yml
+    ports: ["9090:9090"]
+    depends_on: [playback]
+
+configs:
+  prometheus:
+    content: |
+      global:
+        scrape_interval: 15s
+      scrape_configs:
+        - job_name: playback-service
+          static_configs:
+            - targets: ["playback:8081"]

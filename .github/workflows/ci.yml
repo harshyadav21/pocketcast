@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  playback-service:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: playback-service
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: playback-service/go.mod
+      - run: go vet ./...
+      - run: go test -race ./...
+
+  catalog-service:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: catalog-service
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: pocketcast
+          POSTGRES_USER: pocketcast
+          POSTGRES_PASSWORD: pocketcast
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U pocketcast" --health-interval 5s --health-retries 10
+    env:
+      POSTGRES_HOST: localhost
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: python manage.py makemigrations --check --dry-run
+      - run: python manage.py test
